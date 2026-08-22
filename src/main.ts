@@ -1,3 +1,4 @@
+import { installJarvisSessionKeepalive } from '@/services/jarvis-session-keepalive';
 import './styles/base-layer.css';
 import './bootstrap/zod-csp';
 import { SITE_VARIANT } from '@/config/variant';
@@ -513,6 +514,8 @@ installFetchFailureAttribution();
 installRuntimeFetchPatch();
 // In web production, route RPC calls through api.worldmonitor.app (Cloudflare edge).
 installWebApiRedirect();
+// LOCAL (jarvis-deploy): renew the Jarvis edge session while open.
+installJarvisSessionKeepalive();
 // Force-reload tabs running a stale bundle (catches the class of bug where
 // users keep a tab open across a wire-shape change). Skips when build-hash
 // is the 'dev' marker.
