@@ -82,6 +82,25 @@ function isDefenseIndustrialShape(params: URLSearchParams): boolean {
     && /^[A-Z]{2}$/.test(params.get('country_code') ?? '');
 }
 
+
+// LOCAL (jarvis-deploy): this build can be served under a reverse-proxy prefix
+// (VITE_WS_API_URL set to a relative path, e.g. /api/admin/worldmonitor). The
+// allowlist below is keyed by the canonical /api/... path, so strip that
+// prefix before matching — otherwise every "public" RPC (news digest,
+// forecasts, displacement, defense) is rejected client-side before any
+// request is made. Safe under Node (no import.meta.env → no prefix).
+const DEPLOY_PREFIX: string = (() => {
+  try {
+    const v = (import.meta as unknown as { env?: Record<string, string | undefined> }).env?.VITE_WS_API_URL ?? '';
+    return v.startsWith('/') ? v.replace(/\/+$/, '') : '';
+  } catch {
+    return '';
+  }
+})();
+function stripDeployPrefix(pathname: string): string {
+  return DEPLOY_PREFIX && pathname.startsWith(`${DEPLOY_PREFIX}/`) ? pathname.slice(DEPLOY_PREFIX.length) : pathname;
+}
+
 export function isPublicSharedRpcRequest(urlLike: string | URL, method = 'GET'): boolean {
   if (method.toUpperCase() !== 'GET') return false;
 
@@ -94,7 +113,7 @@ export function isPublicSharedRpcRequest(urlLike: string | URL, method = 'GET'):
     return false;
   }
 
-  const pathname = url.pathname.length > 1 ? url.pathname.replace(/\/+$/, '') : url.pathname;
+  const pathname = stripDeployPrefix(url.pathname.length > 1 ? url.pathname.replace(/\/+$/, '') : url.pathname);
   if (!PUBLIC_SHARED_RPC_PATHS.has(pathname)) return false;
 
   // Shape-check the caller's query, not the router's echo of the path segment.
@@ -114,7 +133,7 @@ export function addPublicSharedRpcMarker(urlLike: string | URL): string {
   const base = typeof location === 'undefined' ? 'https://worldmonitor.invalid' : location.href;
   const url = new URL(original, base);
 
-  if (!PUBLIC_SHARED_RPC_PATHS.has(url.pathname)) {
+  if (!PUBLIC_SHARED_RPC_PATHS.has(stripDeployPrefix(url.pathname))) {
     throw new Error(`not an allowlisted public RPC: ${url.pathname}`);
   }
   url.searchParams.set('public', '1');
