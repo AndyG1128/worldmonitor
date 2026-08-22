@@ -654,7 +654,7 @@ if (!('__TAURI_INTERNALS__' in window) && !('__TAURI__' in window) && swContaine
     } catch {}
   };
 
-  navigator.serviceWorker.register('/sw.js', { scope: '/' })
+  navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`, { scope: import.meta.env.BASE_URL })  // LOCAL (jarvis-deploy): base-path aware
     .then((registration) => {
       console.log('[PWA] Service worker registered');
 
