@@ -2,6 +2,7 @@
 // Polls /api/llm-health every 60s. Shows green dot when available, red when offline.
 
 import { h } from '@/utils/dom-utils';
+import { toApiUrl } from '@/services/runtime';
 
 const POLL_INTERVAL_MS = 60_000;
 
@@ -36,7 +37,7 @@ export class LlmStatusIndicator {
 
   private async poll(): Promise<void> {
     try {
-      const resp = await fetch('/api/llm-health', {
+      const resp = await fetch(toApiUrl('/api/llm-health'), {
         signal: AbortSignal.timeout(5_000),
       });
       if (resp.status === 404) {

@@ -7,7 +7,7 @@
 import type { NewsItem } from '@/types';
 import type { OrefAlert } from '@/services/oref-alerts';
 import { getSourceTier } from '@/config/feeds';
-import { isDesktopRuntime, getRemoteApiBaseUrl } from '@/services/runtime';
+import { isDesktopRuntime, getRemoteApiBaseUrl, toApiUrl } from '@/services/runtime';
 import { getClerkToken } from '@/services/clerk';
 import { SITE_VARIANT } from '@/config/variant';
 import { effectivePubDateMs } from '@/services/feed-date';
@@ -220,7 +220,7 @@ function dispatchAlert(alert: BreakingAlert): void {
         xhr.setRequestHeader('Authorization', `Bearer ${token}`);
         xhr.send(body);
       } else {
-        fetch('/api/notify', {
+        fetch(toApiUrl('/api/notify'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body,

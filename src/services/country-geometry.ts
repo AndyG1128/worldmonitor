@@ -13,7 +13,7 @@ interface CountryHit {
   name: string;
 }
 
-const COUNTRY_GEOJSON_URL = '/data/countries.geojson';
+const COUNTRY_GEOJSON_URL = `${import.meta.env.BASE_URL}data/countries.geojson`;
 /** The base GeoJSON is the module-level gate for every geometry consumer;
  * a hung fetch parks `loadPromise` forever, so bound it well above a normal
  * static-asset load but well below "stuck for the session". */

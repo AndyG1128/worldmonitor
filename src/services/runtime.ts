@@ -400,7 +400,11 @@ export function installWebApiRedirect(): void {
 
   const apiBase = getConfiguredWebApiBaseUrl();
   const hasRedirect = !!apiBase && isAllowedRedirectTarget(apiBase);
-  if (apiBase && !hasRedirect) {
+  // LOCAL (jarvis-deploy): a RELATIVE api base (e.g. "/api/admin/worldmonitor")
+  // means "same origin, behind a reverse-proxy prefix" — every same-origin
+  // /api/... call gets the prefix, nothing leaves the origin.
+  const pathPrefix = !!apiBase && apiBase.startsWith('/') ? apiBase : '';
+  if (apiBase && !hasRedirect && !pathPrefix) {
     console.warn('[runtime] web API base blocked — not in hostname allowlist:', apiBase);
   }
 
@@ -517,6 +521,33 @@ export function installWebApiRedirect(): void {
         if (u.origin === API_BASE && pathAndSearch.startsWith('/api/')) {
           const enriched = await enrichInitForPremium(pathAndSearch, init);
           return nativeFetch(new Request(input, enriched ? withCredentials(enriched) : withCredentials(init)));
+        }
+      }
+      return nativeFetch(input, init);
+    };
+    window.fetch = withBillingVerificationRetry(dispatch);
+  } else if (pathPrefix) {
+    const PREFIX = pathPrefix;
+    const underPrefix = (path: string): boolean => path.startsWith(`${PREFIX}/`);
+    const dispatch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      if (typeof input === 'string') {
+        if (shouldRedirectPath(input) && !underPrefix(input)) {
+          return nativeFetch(`${PREFIX}${input}`, init);
+        }
+        return nativeFetch(input, init);
+      }
+      if (input instanceof URL) {
+        const pathAndSearch = `${input.pathname}${input.search}`;
+        if (input.origin === window.location.origin && shouldRedirectPath(pathAndSearch) && !underPrefix(pathAndSearch)) {
+          return nativeFetch(new URL(`${PREFIX}${pathAndSearch}`, input.origin), init);
+        }
+        return nativeFetch(input, init);
+      }
+      if (input instanceof Request) {
+        const u = new URL(input.url);
+        const pathAndSearch = `${u.pathname}${u.search}`;
+        if (u.origin === window.location.origin && shouldRedirectPath(pathAndSearch) && !underPrefix(pathAndSearch)) {
+          return nativeFetch(new Request(`${PREFIX}${pathAndSearch}`, input), init);
         }
       }
       return nativeFetch(input, init);

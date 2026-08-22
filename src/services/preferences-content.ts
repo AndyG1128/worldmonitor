@@ -37,6 +37,7 @@ import {
   type AnalysisPanelId,
 } from '@/services/analysis-framework-store';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { toApiUrl } from '@/services/runtime';
 
 
 const DESKTOP_RELEASES_URL = 'https://github.com/koala73/worldmonitor/releases';
@@ -585,7 +586,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
           }
           const fetchBtn = container.querySelector<HTMLButtonElement>('#fwFetchBtn');
           if (fetchBtn) fetchBtn.disabled = true;
-          fetch('/api/skills/fetch-agentskills', {
+          fetch(toApiUrl('/api/skills/fetch-agentskills'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ url: urlVal }),

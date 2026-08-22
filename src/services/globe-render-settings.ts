@@ -80,8 +80,8 @@ export const GLOBE_TEXTURE_OPTIONS: { value: GlobeTexture; label: string }[] = [
 ];
 
 export const GLOBE_TEXTURE_URLS: Record<GlobeTexture, string> = {
-  'topographic': '/textures/earth-topo-bathy.jpg',
-  'blue-marble': '/textures/earth-blue-marble.jpg',
+  'topographic': `${import.meta.env.BASE_URL}textures/earth-topo-bathy.jpg`,
+  'blue-marble': `${import.meta.env.BASE_URL}textures/earth-blue-marble.jpg`,
 };
 
 export function getGlobeTexture(): GlobeTexture {

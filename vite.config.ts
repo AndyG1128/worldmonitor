@@ -895,6 +895,9 @@ export default defineConfig(({ mode }) => {
   const activeMeta = VARIANT_META[activeVariant] || VARIANT_META.full;
 
   return {
+    // LOCAL (jarvis-deploy): serve under a reverse-proxy prefix when built with
+    // VITE_BASE_PATH (Jarvis: /api/admin/worldmonitor/). Default '/' = upstream.
+    base: env.VITE_BASE_PATH || process.env.VITE_BASE_PATH || '/',
     html: {
       cspNonce: STATIC_SCRIPT_NONCE,
     },

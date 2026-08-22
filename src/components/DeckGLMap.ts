@@ -253,8 +253,8 @@ type ViewportMovementEventData = {
 const MAP_INTERACTION_MODE: MapInteractionMode =
   import.meta.env.VITE_MAP_INTERACTION_MODE === 'flat' ? 'flat' : '3d';
 
-const HAPPY_DARK_STYLE = '/map-styles/happy-dark.json';
-const HAPPY_LIGHT_STYLE = '/map-styles/happy-light.json';
+const HAPPY_DARK_STYLE = `${import.meta.env.BASE_URL}map-styles/happy-dark.json`;
+const HAPPY_LIGHT_STYLE = `${import.meta.env.BASE_URL}map-styles/happy-light.json`;
 const isHappyVariant = SITE_VARIANT === 'happy';
 
 // Zoom thresholds for layer visibility and labels (matches old Map.ts)

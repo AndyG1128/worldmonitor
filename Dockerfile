@@ -42,6 +42,12 @@ RUN npm run build:pro
 # public worldmonitor.app site (written only under public/). Their attribution
 # manifest gate fails inside any Docker build context (the walk sees a subset of
 # the tree; upstream HEAD 881681e7, 2026-08-22). Private instance: skip both.
+# LOCAL (jarvis-deploy): build-time base path + API base so the dashboard can
+# live under a reverse-proxy prefix (Jarvis serves it at /api/admin/worldmonitor/
+# behind its edge gate). Defaults keep upstream root-hosting behaviour.
+ARG VITE_BASE_PATH=/
+ARG VITE_WS_API_URL=
+ENV VITE_BASE_PATH=$VITE_BASE_PATH VITE_WS_API_URL=$VITE_WS_API_URL
 RUN npx tsc && npx vite build
 # Assert the /pro pages survived the public/ -> dist/ copy (#6898). build:pro
 # succeeding proves public/pro/ exists; it does NOT prove Vite copied it, and

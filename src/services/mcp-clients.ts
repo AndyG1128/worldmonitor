@@ -21,6 +21,7 @@ import {
 } from './convex-client';
 import { getClerkToken, getCurrentClerkUser } from './clerk';
 import {
+import { toApiUrl } from '@/services/runtime';
   assertAccountStillCurrent,
   settleAccountOperation,
 } from './account-operation';
@@ -76,7 +77,7 @@ export async function revokeMcpClient(tokenId: string): Promise<void> {
   const token = await getClerkToken();
   if (!token) throw new Error('Sign in to revoke MCP clients.');
 
-  const resp = await fetch('/api/user/mcp-revoke', {
+  const resp = await fetch(toApiUrl('/api/user/mcp-revoke'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -114,7 +115,7 @@ export async function fetchMcpQuota(): Promise<McpQuota> {
   if (!token) return fallback;
 
   try {
-    const resp = await fetch('/api/user/mcp-quota', {
+    const resp = await fetch(toApiUrl('/api/user/mcp-quota'), {
       method: 'GET',
       headers: { Authorization: `Bearer ${token}` },
     });

@@ -11,6 +11,7 @@
 
 import { getClerkToken } from '@/services/clerk';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
+import { toApiUrl } from '@/services/runtime';
 
 export interface ReferralProfile {
   code: string;
@@ -71,7 +72,7 @@ export async function getReferralProfile(): Promise<ReferralProfile | null> {
   }
   if (!token) return null;
   try {
-    const res = await fetch('/api/referral/me', {
+    const res = await fetch(toApiUrl('/api/referral/me'), {
       method: 'GET',
       headers: { Authorization: `Bearer ${token}` },
     });

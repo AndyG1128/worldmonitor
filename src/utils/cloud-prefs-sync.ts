@@ -18,7 +18,7 @@ import {
   resolveCloudBlobKeyAction,
   type CloudSyncKey,
 } from './sync-keys';
-import { isDesktopRuntime } from '@/services/runtime';
+import { isDesktopRuntime, toApiUrl } from '@/services/runtime';
 import { getClerkToken } from '@/services/clerk';
 import {
   computeLegacyDefaultDisabledSources,
@@ -618,7 +618,7 @@ async function getCloudPrefsToken(): Promise<string | null> {
 async function fetchCloudPrefs(token: string, variant: string): Promise<CloudPrefs | null> {
   let res: Response;
   try {
-    res = await fetch(`/api/user-prefs?variant=${encodeURIComponent(variant)}`, {
+    res = await fetch(toApiUrl(`/api/user-prefs?variant=${encodeURIComponent(variant)}`), {
       headers: { Authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(CLOUD_PREFS_REQUEST_TIMEOUT_MS),
     });
@@ -640,7 +640,7 @@ async function postCloudPrefs(
 ): Promise<{ syncVersion: number } | { conflict: true; actualSyncVersion?: number }> {
   let res: Response;
   try {
-    res = await fetch('/api/user-prefs', {
+    res = await fetch(toApiUrl('/api/user-prefs'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -924,7 +924,7 @@ export function onSignOut(): void {
       const prepared = migrateLocalBlobIfNeeded();
       const token = _cachedToken;
       void _syncOperations.run(async () => {
-        await fetch('/api/user-prefs', {
+        await fetch(toApiUrl('/api/user-prefs'), {
           method: 'POST',
           keepalive: true,
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -1168,7 +1168,7 @@ export function install(variant: string): void {
     const myGeneration = _authGeneration;
     const payload = JSON.stringify({ variant: _currentVariant, data: blob, expectedSyncVersion: getSyncVersion(), schemaVersion: prepared.schemaVersion });
     void _syncOperations.run(async () => {
-      await fetch('/api/user-prefs', {
+      await fetch(toApiUrl('/api/user-prefs'), {
         method: 'POST',
         keepalive: true,
         headers: {

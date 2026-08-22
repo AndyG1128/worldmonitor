@@ -14,6 +14,7 @@ import {
 } from './convex-client';
 import { getClerkToken, getCurrentClerkUser } from './clerk';
 import {
+import { toApiUrl } from '@/services/runtime';
   assertAccountStillCurrent,
   settleAccountOperation,
 } from './account-operation';
@@ -130,7 +131,7 @@ export async function revokeApiKey(keyId: string): Promise<void> {
       const resp = await settleAccountOperation(
         userId,
         'invalidating the API key cache',
-        () => fetch('/api/invalidate-user-api-key-cache', {
+        () => fetch(toApiUrl('/api/invalidate-user-api-key-cache'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ keyHash: result.keyHash }),

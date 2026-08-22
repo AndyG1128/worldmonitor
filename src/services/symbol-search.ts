@@ -6,6 +6,7 @@
  */
 
 import type { MarketWatchlistEntry } from '@/services/market-watchlist';
+import { toApiUrl } from '@/services/runtime';
 
 export interface SymbolSearchResult {
   symbol: string;
@@ -30,7 +31,7 @@ export async function searchSymbols(query: string): Promise<SymbolSearchResult[]
   _inflight = controller;
 
   try {
-    const res = await fetch(`/api/symbol-search?q=${encodeURIComponent(q)}`, {
+    const res = await fetch(toApiUrl(`/api/symbol-search?q=${encodeURIComponent(q)}`), {
       signal: controller.signal,
     });
     if (!res.ok) return [];
