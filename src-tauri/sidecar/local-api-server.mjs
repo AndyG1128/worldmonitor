@@ -95,7 +95,10 @@ const MAX_CONCURRENT_UPSTREAM = 6;
 // Matches fetchWithTimeout()'s own default timeoutMs for consistency.
 // Mutable (not const) only so tests can shrink it -- production always runs
 // at the default.
-let _upstreamIdleTimeoutMs = 12000;
+// LOCAL (jarvis-deploy): configurable. A self-hosted Ollama brief legitimately
+// runs ~8s warm and pays a ~8s model reload on a context change; 12s left no
+// margin and produced empty briefs. Default unchanged for upstream parity.
+let _upstreamIdleTimeoutMs = Number(process.env.LOCAL_API_UPSTREAM_IDLE_MS || 12000);
 function acquireUpstreamSlot() {
   if (_activeUpstream < MAX_CONCURRENT_UPSTREAM) {
     _activeUpstream++;
