@@ -223,6 +223,12 @@ export async function requirePremiumRpcAccess<T extends RpcApiErrorLike>(
  * Resolves premium status and the user-bound identity for spend controls.
  */
 export async function resolvePremiumCallerIdentity(request: Request): Promise<PremiumCallerIdentity> {
+  // LOCAL (jarvis-deploy): a private self-hosted instance (docker mode +
+  // WM_SELF_HOSTED_UNLOCK) is its own premium caller — the external auth gate
+  // in front of it is the access boundary. Mirrors the gateway unlock.
+  if (process.env.LOCAL_API_MODE === 'docker' && process.env.WM_SELF_HOSTED_UNLOCK === '1') {
+    return { isPremium: true, userId: 'self-hosted-owner', kind: 'user-api-key', quotaExempt: true };
+  }
   // Internal-MCP context: trusted markers are set by the gateway AFTER an
   // HMAC verification on `X-WM-MCP-Internal` succeeds. Inbound copies of
   // these headers are stripped at the gateway entry (defense-in-depth) so

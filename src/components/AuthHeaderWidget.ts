@@ -22,6 +22,13 @@ export class AuthHeaderWidget {
     this.container = document.createElement('div');
     this.container.className = 'auth-header-widget';
 
+    // LOCAL (jarvis-deploy): a private self-hosted instance has no vendor
+    // account — the Sign In / Create account affordances are meaningless here.
+    if (import.meta.env.VITE_WM_SELF_HOSTED_UNLOCK === '1') {
+      this.container.style.display = 'none';
+      return;
+    }
+
     this.unsubscribeAuth = subscribeAuthState((state: AuthSession) => {
       if (state.isPending) {
         this.renderPending();

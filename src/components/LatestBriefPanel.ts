@@ -215,6 +215,19 @@ export class LatestBriefPanel extends Panel {
     // to a Clerk user, so there's nothing to fetch.
     const requestUserId = authState.user?.id ?? null;
     if (!requestUserId) {
+      if (import.meta.env.VITE_WM_SELF_HOSTED_UNLOCK === '1') {
+        // LOCAL (jarvis-deploy): the personalised brief is a vendor-cloud,
+        // per-account product with no local equivalent. Say so plainly.
+        this.setContentNodes(
+          h('div', { className: 'latest-brief-card latest-brief-card--composing' },
+            h('div', { className: 'latest-brief-empty-title' }, 'Not available on a private instance'),
+            h('div', { className: 'latest-brief-empty-body' },
+              'The personalised brief is tied to a vendor cloud account. Use AI Insights (world brief) and the country briefs instead.',
+            ),
+          ),
+        );
+        return;
+      }
       this.renderSignInRequired();
       return;
     }

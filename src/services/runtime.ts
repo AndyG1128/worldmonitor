@@ -529,25 +529,35 @@ export function installWebApiRedirect(): void {
   } else if (pathPrefix) {
     const PREFIX = pathPrefix;
     const underPrefix = (path: string): boolean => path.startsWith(`${PREFIX}/`);
+    // Every /api call is same-origin and sits behind the Jarvis edge gate, which
+    // authenticates by cookie. Upstream sends some "public" bootstrap reads with
+    // credentials:'omit' (CDN-cacheable on their cloud) — here that is a
+    // guaranteed 401, so cookies are always included.
+    const creds = (init?: RequestInit): RequestInit => ({ ...(init ?? {}), credentials: 'include' });
     const dispatch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       if (typeof input === 'string') {
         if (shouldRedirectPath(input) && !underPrefix(input)) {
-          return nativeFetch(`${PREFIX}${input}`, init);
+          return nativeFetch(`${PREFIX}${input}`, creds(init));
         }
+        if (underPrefix(input)) return nativeFetch(input, creds(init));
         return nativeFetch(input, init);
       }
       if (input instanceof URL) {
         const pathAndSearch = `${input.pathname}${input.search}`;
         if (input.origin === window.location.origin && shouldRedirectPath(pathAndSearch) && !underPrefix(pathAndSearch)) {
-          return nativeFetch(new URL(`${PREFIX}${pathAndSearch}`, input.origin), init);
+          return nativeFetch(new URL(`${PREFIX}${pathAndSearch}`, input.origin), creds(init));
         }
+        if (input.origin === window.location.origin && underPrefix(pathAndSearch)) return nativeFetch(input, creds(init));
         return nativeFetch(input, init);
       }
       if (input instanceof Request) {
         const u = new URL(input.url);
         const pathAndSearch = `${u.pathname}${u.search}`;
         if (u.origin === window.location.origin && shouldRedirectPath(pathAndSearch) && !underPrefix(pathAndSearch)) {
-          return nativeFetch(new Request(`${PREFIX}${pathAndSearch}`, input), init);
+          return nativeFetch(new Request(`${PREFIX}${pathAndSearch}`, { ...input, credentials: 'include' } as RequestInit), creds(init));
+        }
+        if (u.origin === window.location.origin && underPrefix(pathAndSearch)) {
+          return nativeFetch(new Request(input, { credentials: 'include' }), creds(init));
         }
       }
       return nativeFetch(input, init);
