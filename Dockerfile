@@ -47,7 +47,8 @@ RUN npm run build:pro
 # behind its edge gate). Defaults keep upstream root-hosting behaviour.
 ARG VITE_BASE_PATH=/
 ARG VITE_WS_API_URL=
-ENV VITE_BASE_PATH=$VITE_BASE_PATH VITE_WS_API_URL=$VITE_WS_API_URL
+ARG VITE_WM_SELF_HOSTED_UNLOCK=
+ENV VITE_BASE_PATH=$VITE_BASE_PATH VITE_WS_API_URL=$VITE_WS_API_URL VITE_WM_SELF_HOSTED_UNLOCK=$VITE_WM_SELF_HOSTED_UNLOCK
 RUN npx tsc && npx vite build
 # Assert the /pro pages survived the public/ -> dist/ copy (#6898). build:pro
 # succeeding proves public/pro/ exists; it does NOT prove Vite copied it, and

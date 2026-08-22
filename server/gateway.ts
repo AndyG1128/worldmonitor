@@ -1189,7 +1189,7 @@ export function createDomainGateway(
       || isPublicSharedRpcRequest(request.url, request.method);
     const seedRefreshVerified = await isResilienceRankingSeedRefreshRequest(request, pathname);
     const relayWarmPingVerified = await isRelayWarmPingRequest(request, pathname);
-    const requiresDirectLlmQuota = !internalMcpVerified && await shouldReserveGatewayDirectLlmQuota(request, pathname);
+    const requiresDirectLlmQuota = !internalMcpVerified && !(process.env.LOCAL_API_MODE === 'docker' && process.env.WM_SELF_HOSTED_UNLOCK === '1') && await shouldReserveGatewayDirectLlmQuota(request, pathname);
     const isTierGated = !internalMcpVerified && !isPublicNoAuthRpc && !seedRefreshVerified && !relayWarmPingVerified && getRequiredTier(pathname) !== null;
     // Docker self-hosting has no Clerk/Convex entitlement backend. Its browser
     // still obtains and presents a server-signed anonymous session, so that
@@ -1200,6 +1200,15 @@ export function createDomainGateway(
       request.method === 'GET' &&
       pathname === COUNTRY_INTEL_BRIEF_PATH &&
       process.env.LOCAL_API_MODE === 'docker';
+    // LOCAL (jarvis-deploy): a private self-hosted instance has no cloud
+    // entitlement backend and owns its own LLM. WM_SELF_HOSTED_UNLOCK=1 (docker
+    // mode only) extends the country-brief exception above to every premium
+    // route: the server-signed anonymous session stays the auth boundary, the
+    // cloud entitlement/tier checks are skipped, and no direct-LLM quota is
+    // reserved. The instance sits behind an external auth gate.
+    const selfHostUnlock =
+      process.env.LOCAL_API_MODE === 'docker' &&
+      process.env.WM_SELF_HOSTED_UNLOCK === '1';
     const needsLegacyProBearerGate = !internalMcpVerified && !isPublicNoAuthRpc && PREMIUM_RPC_PATHS.has(pathname) && !isTierGated;
     const isProFreshCacheRpc = PRO_FRESH_CACHE_RPC_PATHS.has(pathname);
     const needsProFreshnessResolution =
@@ -1240,7 +1249,7 @@ export function createDomainGateway(
       ? { valid: true, required: false }
       : ((await validateApiKey(request, {
           forceKey: ((isTierGated && !sessionUserId) || needsLegacyProBearerGate)
-            && !isDockerSelfHostCountryBrief,
+            && !isDockerSelfHostCountryBrief && !selfHostUnlock,
         })) as { valid: boolean; required: boolean; error?: string; kind?: 'enterprise' | 'session' | 'user'; credential?: string });
 
     // User-owned API keys (wm_ prefix): when the static WORLDMONITOR_VALID_KEYS
@@ -1256,7 +1265,7 @@ export function createDomainGateway(
       request.headers.get('X-Api-Key') ??
       '';
     const dockerSelfHostSessionAuthorized =
-      isDockerSelfHostCountryBrief &&
+      (isDockerSelfHostCountryBrief || selfHostUnlock) &&
       keyCheck.valid &&
       !keyCheck.required &&
       keyCheck.kind === 'session';

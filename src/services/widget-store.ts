@@ -233,8 +233,13 @@ export function isProWidgetEnabled(): boolean {
   return proSessionHint;
 }
 
+// LOCAL (jarvis-deploy): private self-hosted instance — the build flag makes
+// the UI treat itself as entitled (server side: WM_SELF_HOSTED_UNLOCK).
+const SELF_HOSTED_UNLOCK = import.meta.env.VITE_WM_SELF_HOSTED_UNLOCK === '1';
+
 export function isProUser(): boolean {
   return (
+    SELF_HOSTED_UNLOCK ||
     isWidgetFeatureEnabled() ||
     isProWidgetEnabled() ||
     getAuthState().user?.role === 'pro' ||

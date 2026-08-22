@@ -53,6 +53,7 @@ export enum PanelGateReason {
  * signals that aren't already covered by isProUser.
  */
 export function hasPremiumAccess(authState?: AuthSession): boolean {
+  if (import.meta.env.VITE_WM_SELF_HOSTED_UNLOCK === '1') return true; // LOCAL (jarvis-deploy)
   if (getSecretState('WORLDMONITOR_API_KEY').present) return true;
   if (isProUser()) return true;
   if (authState?.user?.role === 'pro') return true;
