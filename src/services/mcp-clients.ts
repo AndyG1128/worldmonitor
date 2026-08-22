@@ -21,10 +21,10 @@ import {
 } from './convex-client';
 import { getClerkToken, getCurrentClerkUser } from './clerk';
 import {
-import { toApiUrl } from '@/services/runtime';
   assertAccountStillCurrent,
   settleAccountOperation,
 } from './account-operation';
+import { toApiUrl } from '@/services/runtime';
 
 export interface McpClientInfo {
   id: string;
