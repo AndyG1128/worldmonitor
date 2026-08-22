@@ -366,7 +366,11 @@ const LLM_PROVIDERS = [
   {
     name: 'ollama',
     envKey: 'OLLAMA_API_URL',
-    apiUrlFn: (baseUrl) => new URL('/v1/chat/completions', baseUrl).toString(),
+    // LOCAL (jarvis-deploy): native /api/chat — the OpenAI-compatible endpoint
+    // ignores think:false, so gemma4 spends the budget on hidden reasoning and
+    // the call times out (measured). num_ctx pinned to Jarvis's short-prompt size.
+    apiUrlFn: (baseUrl) => new URL('/api/chat', baseUrl).toString(),
+    native: true,
     model: () => process.env.OLLAMA_MODEL || 'llama3.1:8b',
     headers: (_key) => {
       const h = { 'Content-Type': 'application/json', 'User-Agent': CHROME_UA };
@@ -521,16 +525,27 @@ async function callLLM(headline, options = {}) {
         const response = await insightsFetch(apiUrl, {
           method: 'POST',
           headers: provider.headers(envVal),
-          body: JSON.stringify({
-            model,
-            messages: [
-              { role: 'system', content: systemPrompt },
-              { role: 'user', content: userPrompt },
-            ],
-            max_tokens: maxTokens,
-            temperature: 0.1,
-            ...provider.extraBody,
-          }),
+          body: JSON.stringify(provider.native
+            ? {
+                model,
+                messages: [
+                  { role: 'system', content: systemPrompt },
+                  { role: 'user', content: userPrompt },
+                ],
+                stream: false,
+                think: false,
+                options: { num_ctx: Number(process.env.OLLAMA_NUM_CTX || 8192), temperature: 0.1, num_predict: maxTokens },
+              }
+            : {
+                model,
+                messages: [
+                  { role: 'system', content: systemPrompt },
+                  { role: 'user', content: userPrompt },
+                ],
+                max_tokens: maxTokens,
+                temperature: 0.1,
+                ...provider.extraBody,
+              }),
           signal: AbortSignal.timeout(Math.max(1, Math.min(provider.timeout, usable))),
         });
         if (!response.ok) {
@@ -548,12 +563,18 @@ async function callLLM(headline, options = {}) {
       }, provider.maxRetries ?? INSIGHTS_LLM_MAX_RETRIES, retryDelayMs);
 
       const json = await resp.json();
-      const usage = {
-        tokensTotal: json.usage?.total_tokens ?? 0,
-        tokensPrompt: json.usage?.prompt_tokens ?? 0,
-        tokensCompletion: json.usage?.completion_tokens ?? 0,
-      };
-      const rawText = json.choices?.[0]?.message?.content?.trim();
+      const usage = provider.native
+        ? {
+            tokensTotal: (json.prompt_eval_count ?? 0) + (json.eval_count ?? 0),
+            tokensPrompt: json.prompt_eval_count ?? 0,
+            tokensCompletion: json.eval_count ?? 0,
+          }
+        : {
+            tokensTotal: json.usage?.total_tokens ?? 0,
+            tokensPrompt: json.usage?.prompt_tokens ?? 0,
+            tokensCompletion: json.usage?.completion_tokens ?? 0,
+          };
+      const rawText = (provider.native ? json.message?.content : json.choices?.[0]?.message?.content)?.trim();
       if (!rawText) {
         console.warn(`  ${provider.name}: empty response`);
         record(false, { ...usage, reason: 'empty' });
