@@ -99,7 +99,15 @@ export function getProviderCredentials(
     if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
 
     return {
-      apiUrl: new URL('/v1/chat/completions', baseUrl).toString(),
+      // LOCAL (jarvis-deploy): Ollama's OpenAI-compatible endpoint ignores
+      // `think:false` — thinking models (gemma4) stream hidden reasoning first,
+      // so the content arrives late and the sidecar's idle watchdog aborts with
+      // an empty brief. The NATIVE /api/chat honours think:false (measured:
+      // 2.8s with content vs 11–16s of reasoning). `native` makes llmFetch()
+      // translate request/response shapes; num_ctx is pinned so this client
+      // never reloads the shared model at a larger context than Jarvis uses.
+      apiUrl: new URL('/api/chat', baseUrl).toString(),
+      native: 'ollama' as const,
       model: overrides.model || process.env.OLLAMA_MODEL || 'llama3.1:8b',
       headers,
       extraBody: { think: false },
@@ -564,6 +572,82 @@ export function callLlmReasoningStream(opts: LlmStreamOptions): ReadableStream<U
   });
 }
 
+// LOCAL (jarvis-deploy): provider-shape adapter. Non-native providers pass
+// straight through to fetch(); Ollama-native translates the OpenAI-style
+// payload to /api/chat and hands back a Response in the OpenAI shape the
+// callers already parse (choices[].message / SSE choices[].delta + [DONE]).
+const OLLAMA_NATIVE_NUM_CTX = Number(process.env.OLLAMA_NUM_CTX || 8192);
+
+async function llmFetch(
+  creds: { apiUrl: string; headers: Record<string, string>; model: string; native?: 'ollama' },
+  payload: Record<string, unknown>,
+  init: { signal?: AbortSignal; stream: boolean },
+): Promise<Response> {
+  if (creds.native !== 'ollama') {
+    return fetch(creds.apiUrl, {
+      method: 'POST',
+      headers: { ...creds.headers, 'User-Agent': CHROME_UA },
+      body: JSON.stringify({ ...payload, ...(init.stream ? { stream: true } : {}) }),
+      signal: init.signal,
+    });
+  }
+  const { messages, temperature, max_tokens: maxTokens } = payload as {
+    messages: unknown; temperature?: number; max_tokens?: number;
+  };
+  const body = {
+    model: creds.model,
+    messages,
+    stream: init.stream,
+    think: false,
+    options: {
+      num_ctx: OLLAMA_NATIVE_NUM_CTX,
+      ...(typeof temperature === 'number' ? { temperature } : {}),
+      ...(typeof maxTokens === 'number' ? { num_predict: maxTokens } : {}),
+    },
+  };
+  const resp = await fetch(creds.apiUrl, {
+    method: 'POST',
+    headers: { ...creds.headers, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
+    body: JSON.stringify(body),
+    signal: init.signal,
+  });
+  if (!resp.ok) return resp;
+  if (!init.stream) {
+    const j = await resp.json() as { message?: { content?: string }; done_reason?: string };
+    const shaped = {
+      choices: [{ message: { content: j.message?.content ?? '' }, finish_reason: j.done_reason ?? 'stop' }],
+    };
+    return new Response(JSON.stringify(shaped), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  }
+  // NDJSON -> SSE translation
+  const enc = new TextEncoder();
+  const dec = new TextDecoder();
+  let buf = '';
+  const out = new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, controller) {
+      buf += dec.decode(chunk, { stream: true });
+      let nl: number;
+      while ((nl = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (!line) continue;
+        try {
+          const j = JSON.parse(line) as { message?: { content?: string }; done?: boolean };
+          const delta = j.message?.content ?? '';
+          if (delta) {
+            controller.enqueue(enc.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: delta } }] })}\n\n`));
+          }
+          if (j.done) controller.enqueue(enc.encode('data: [DONE]\n\n'));
+        } catch { /* partial line */ }
+      }
+    },
+    flush(controller) {
+      controller.enqueue(enc.encode('data: [DONE]\n\n'));
+    },
+  });
+  return new Response(resp.body!.pipeThrough(out), { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+}
+
 export async function callLlm(opts: LlmCallOptions): Promise<LlmCallResult | null> {
   const {
     messages: rawMessages,
@@ -681,20 +765,18 @@ export async function callLlm(opts: LlmCallOptions): Promise<LlmCallResult | nul
       };
 
       try {
-        const resp = await fetch(creds.apiUrl, {
-          method: 'POST',
-          headers: { ...creds.headers, 'User-Agent': CHROME_UA },
-          body: JSON.stringify({
-            ...creds.extraBody,
-            model: creds.model,
-            messages,
-            temperature,
-            max_tokens: maxTokens,
-          }),
+        const resp = await llmFetch(creds, {
+          ...creds.extraBody,
+          model: creds.model,
+          messages,
+          temperature,
+          max_tokens: maxTokens,
+        }, {
           // #5246: DeepSeek V4 Flash is bimodal — healthy calls finish near 2s,
           // while stalled calls hang to the old 25s clamp. Cut only this model's
           // dead tail so the existing provider chain can reach its fallback.
           signal: AbortSignal.timeout(attemptTimeoutMs),
+          stream: false,
         });
 
         if (!resp.ok) {
