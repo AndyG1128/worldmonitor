@@ -48,9 +48,16 @@ function showSessionExpired(): void {
   document.body.appendChild(el);
 }
 
-async function refreshJarvisSession(): Promise<void> {
+const ACCESS_TTL_MS = 10 * 60 * 1000; // Jarvis browser access cookie lifetime
+let lastRenewal = Date.now();
+let lastCsrfSeen = '';
+
+async function refreshJarvisSession(): Promise<boolean> {
   const csrf = readCookie(CSRF_COOKIE);
-  if (!csrf) { showSessionExpired(); return; }
+  if (!csrf) { showSessionExpired(); return false; }
+  // Another tab (the Jarvis app) refreshed since our last look — the CSRF
+  // cookie rotates with the session — so don't race it with a second refresh.
+  if (lastCsrfSeen && csrf !== lastCsrfSeen) { lastCsrfSeen = csrf; lastRenewal = Date.now(); return true; }
   try {
     const resp = await fetch(`${window.location.origin}/api/auth/v2/refresh`, {
       method: 'POST',
@@ -58,10 +65,21 @@ async function refreshJarvisSession(): Promise<void> {
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
       body: '{}',
     });
-    if (resp.status === 401 || resp.status === 403) showSessionExpired();
+    if (resp.status === 401 || resp.status === 403) { showSessionExpired(); return false; }
+    if (resp.ok) { lastRenewal = Date.now(); lastCsrfSeen = readCookie(CSRF_COOKIE) || csrf; }
+    return resp.ok;
   } catch {
-    /* offline or gate down — the next tick retries */
+    return false; /* offline or gate down — the next tick retries */
   }
+}
+
+/** Tab woke after the access cookie lapsed: the panels already fired and
+ *  401'd (and upstream's Insights panel never retries). Renew, then reload so
+ *  every panel bootstraps against a live session. */
+async function onWake(): Promise<void> {
+  const lapsed = Date.now() - lastRenewal > ACCESS_TTL_MS - 30_000;
+  const ok = await refreshJarvisSession();
+  if (ok && lapsed) window.location.reload();
 }
 
 const REFRESH_WHILE_HIDDEN = import.meta.env.VITE_JARVIS_KEEPALIVE_HIDDEN === '1';
@@ -78,7 +96,8 @@ export function installJarvisSessionKeepalive(): void {
   };
   window.setInterval(tick, REFRESH_EVERY_MS);
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') void refreshJarvisSession();
+    if (document.visibilityState === 'visible') void onWake();
   });
+  lastCsrfSeen = readCookie(CSRF_COOKIE);
   window.setTimeout(tick, 15_000);
 }
