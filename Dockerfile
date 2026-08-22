@@ -38,7 +38,11 @@ RUN npm run build:pro
 
 # Build the crawlable static corpus and Vite frontend (outputs to dist/)
 # Skip blog build — blog-site has its own deps not installed here
-RUN npm run build:crawlable-corpus && npm run build:sitemap && npx tsc && npx vite build
+# LOCAL (jarvis-deploy): the crawlable corpus + sitemap are SEO artifacts for the
+# public worldmonitor.app site (written only under public/). Their attribution
+# manifest gate fails inside any Docker build context (the walk sees a subset of
+# the tree; upstream HEAD 881681e7, 2026-08-22). Private instance: skip both.
+RUN npx tsc && npx vite build
 # Assert the /pro pages survived the public/ -> dist/ copy (#6898). build:pro
 # succeeding proves public/pro/ exists; it does NOT prove Vite copied it, and
 # docker/nginx.conf's SPA fallback would serve the dashboard shell at 200 for a
