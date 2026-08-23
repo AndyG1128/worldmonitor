@@ -2072,10 +2072,7 @@ export async function analyzeStock(
   const cacheKey = `market:analyze-stock:v8:${symbol}:${includeNews ? 'news' : 'no-news'}${nameSuffix}`;
 
   const fetchFreshAnalysis = async (): Promise<AnalyzeStockResponse | null> => {
-    const [history, analystData] = await Promise.all([
-      fetchYahooHistory(symbol),
-      fetchYahooAnalystData(symbol),
-    ]);
+    const [history, analystData] = await Promise.all([fetchYahooHistory(symbol), fetchYahooAnalystData(symbol)]);
     if (!history) return null;
 
     const technical = buildTechnicalSnapshot(history.candles);
