@@ -122,7 +122,7 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   'radiation-watch': { name: 'Radiation Watch', enabled: true, priority: 2 },
   'thermal-escalation': { name: 'Thermal Escalation', enabled: true, priority: 2 },
   'oref-sirens': { name: 'Israel Sirens', enabled: true, priority: 2, ...(_desktop && { premium: 'locked' as const }) },
-  'telegram-intel': { name: 'Telegram Intel', enabled: import.meta.env.VITE_WM_SELF_HOSTED_UNLOCK !== '1' /* LOCAL: vendor-relay feeds */, priority: 2, ...(_desktop && { premium: 'locked' as const }) },
+  'telegram-intel': { name: 'Telegram Intel', enabled: true /* LOCAL: session minted, relay polling */, priority: 2, ...(_desktop && { premium: 'locked' as const }) },
   'x-intel': { name: 'X News Accounts', enabled: import.meta.env.VITE_WM_SELF_HOSTED_UNLOCK !== '1' /* LOCAL: vendor-relay feeds */, priority: 2, ...(_desktop && { premium: 'locked' as const }) },
   'airline-intel': { name: 'Airline Intelligence', enabled: true, priority: 2 },
   'tech-readiness': { name: 'Tech Readiness Index', enabled: true, priority: 2 },
