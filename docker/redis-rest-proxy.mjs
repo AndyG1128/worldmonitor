@@ -78,7 +78,10 @@ async function runCommand(args) {
   return client.sendCommand([cmd, ...cmdArgs.map(String)]);
 }
 
-const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
+// LOCAL (jarvis-deploy): raised from 1MB — the wildfire canonical payload is
+// ~5MB (capped there by the seeder). Writes to the local Redis, not Upstash, so
+// there is no external body limit to respect (2026-08-23).
+const MAX_BODY_BYTES = Number(process.env.REDIS_REST_MAX_BODY_BYTES) || 8 * 1024 * 1024; // 8 MB
 
 async function readBody(req) {
   const chunks = [];
