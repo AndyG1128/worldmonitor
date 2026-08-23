@@ -64,7 +64,11 @@ const VERCEL_INITIAL_RESPONSE_LIMIT_MS = 25_000;
 const DIGEST_RESPONSE_TIMEOUT_MS = 14_000;
 const POST_FETCH_HEADROOM_MS = 15_000;
 const RESPONSE_GUARD_BAND_MS = 3_000;
-const OVERALL_DEADLINE_MS = VERCEL_INITIAL_RESPONSE_LIMIT_MS - POST_FETCH_HEADROOM_MS;
+// LOCAL (jarvis-deploy): the Vercel-derived 10s total budget drops most
+// categories on a self-hosted box (hundreds of feeds, many slow or bot-walled).
+// DIGEST_OVERALL_DEADLINE_MS overrides it; the result is cached server-side and
+// warmed by the seeder timer, so browsers read the cache, not the build.
+const OVERALL_DEADLINE_MS = Number(process.env.DIGEST_OVERALL_DEADLINE_MS) || (VERCEL_INITIAL_RESPONSE_LIMIT_MS - POST_FETCH_HEADROOM_MS);
 const BATCH_CONCURRENCY = 20;
 
 type DigestFeedEntry = { category: string; feed: ServerFeed };
