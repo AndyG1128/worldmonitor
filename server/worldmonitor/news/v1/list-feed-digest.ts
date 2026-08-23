@@ -514,7 +514,13 @@ async function fetchAndParseRss(
     if (cached) return cached;
 
     // Try direct fetch first
-    let text = await fetchRssText(feed.url, signal).catch(() => null);
+    // LOCAL (jarvis-deploy): name the direct-fetch failure. `both-failed` with
+    // no reason was undiagnosable (same URL + headers succeed from this container).
+    let text = await fetchRssText(feed.url, signal).catch((e: unknown) => {
+      const err = e as { name?: string; message?: string; cause?: { code?: string } };
+      console.warn(`[feed-fetch] direct-error host=${new URL(feed.url).hostname} name=${err?.name ?? '?'} code=${err?.cause?.code ?? '-'} msg=${String(err?.message ?? '').slice(0, 80)} aborted=${signal.aborted}`);
+      return null;
+    });
     let source: 'direct' | 'relay' | 'both-failed' = text ? 'direct' : 'both-failed';
     let relayStatus: number | null = null;
     let relayBodyShape: 'rss' | 'html-or-empty' | 'no-relay' | 'fetch-error' = 'no-relay';
