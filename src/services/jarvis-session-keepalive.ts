@@ -59,12 +59,18 @@ async function refreshJarvisSession(): Promise<boolean> {
   // cookie rotates with the session — so don't race it with a second refresh.
   if (lastCsrfSeen && csrf !== lastCsrfSeen) { lastCsrfSeen = csrf; lastRenewal = Date.now(); return true; }
   try {
-    const resp = await fetch(`${window.location.origin}/api/auth/v2/refresh`, {
+    // Same lock name as the Jarvis app: refresh tokens are single-use and a
+    // stale one revokes the session, so refreshes must never overlap across
+    // tabs of this origin. Re-read the CSRF cookie inside the lock — the other
+    // tab may have just rotated it while we waited.
+    const locks = (navigator as Navigator & { locks?: { request?: (n: string, cb: () => Promise<Response>) => Promise<Response> } }).locks;
+    const doRefresh = () => fetch(`${window.location.origin}/api/auth/v2/refresh`, {
       method: 'POST',
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': readCookie(CSRF_COOKIE) || csrf },
       body: '{}',
     });
+    const resp = locks?.request ? await locks.request('jarvis:session-refresh', doRefresh) : await doRefresh();
     if (resp.status === 401 || resp.status === 403) { showSessionExpired(); return false; }
     if (resp.ok) { lastRenewal = Date.now(); lastCsrfSeen = readCookie(CSRF_COOKIE) || csrf; }
     return resp.ok;
