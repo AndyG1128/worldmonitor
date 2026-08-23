@@ -9,6 +9,24 @@
 
 import { loadEnvFile, runSeed, CHROME_UA, sleep, MAX_PAYLOAD_BYTES } from './_seed-utils.mjs';
 import { buildEnvelope } from './_seed-envelope-source.mjs';
+import https from 'node:https';
+
+// LOCAL (jarvis-deploy): FIRMS drops pooled/reused connections across the 27
+// regional requests ("other side closed"). A fresh connection per request
+// (keepAlive:false) + retry-on-reset makes the pull reliable (2026-08-23).
+function freshCsvGet(url) {
+  return new Promise((resolve, reject) => {
+    const agent = new https.Agent({ keepAlive: false, maxSockets: 1 });
+    const req = https.request(url, { method: 'GET', headers: { Accept: 'text/csv', 'User-Agent': CHROME_UA }, agent, timeout: 45000 }, (res) => {
+      const chunks = [];
+      res.on('data', (c) => chunks.push(c));
+      res.on('end', () => resolve({ status: res.statusCode || 0, body: Buffer.concat(chunks).toString('utf8') }));
+    });
+    req.on('error', reject);
+    req.on('timeout', () => req.destroy(new Error('timeout')));
+    req.end();
+  });
+}
 import { compactWildfireDashboardPayload, WILDFIRE_CANONICAL_DETECTION_LIMIT } from './_wildfire-dashboard.mjs';
 import {
   fetchCwfisFires,
@@ -74,17 +92,17 @@ async function fetchRegionSource(apiKey, regionName, bbox, source) {
   const dayRange = Math.min(10, Math.max(1, Number(process.env.FIRMS_DAY_RANGE) || 1));
   const url = `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${apiKey}/${source}/${bbox}/${dayRange}`;
   let lastErr;
-  for (let attempt = 1; attempt <= 2; attempt++) {
+  for (let attempt = 1; attempt <= 4; attempt++) {
     try {
-      const res = await fetch(url, {
-        headers: { Accept: 'text/csv', 'User-Agent': CHROME_UA },
-        signal: AbortSignal.timeout(30_000),
-      });
-      if (!res.ok) throw new Error(`FIRMS ${res.status} for ${regionName}/${source}`);
-      return parseCSV(await res.text());
+      const res = await freshCsvGet(url);
+      if (res.status === 429) throw new Error(`FIRMS 429 for ${regionName}/${source}`);
+      if (res.status < 200 || res.status >= 300) throw new Error(`FIRMS ${res.status} for ${regionName}/${source}`);
+      return parseCSV(res.body);
     } catch (err) {
       lastErr = err;
-      if (attempt < 2) await sleep(6_000); // match inter-call pacing so retry stays within FIRMS 10 req/min budget
+      // Connection resets ("other side closed"/ECONNRESET) and 429s recover on a
+      // fresh connection after a backoff; stay within FIRMS' ~10 req/min budget.
+      if (attempt < 4) await sleep(6_000 * attempt);
     }
   }
   throw lastErr;
