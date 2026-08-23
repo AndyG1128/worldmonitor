@@ -1,6 +1,6 @@
 import { Panel } from './Panel';
 import { IDLE_PAUSE_MS, STORAGE_KEYS } from '@/config';
-import { isDesktopRuntime, getLocalApiPort } from '@/services/runtime';
+import { isDesktopRuntime, getLocalApiPort, toApiUrl } from '@/services/runtime';
 import { escapeHtml } from '@/utils/sanitize';
 import { t } from '../services/i18n';
 import { track, trackWebcamSelected, trackWebcamRegionFiltered } from '@/services/analytics';
@@ -317,10 +317,37 @@ export class LiveWebcamsPanel extends Panel {
     return `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&controls=0&modestbranding=1&playsinline=1&rel=0&enablejsapi=1&origin=${window.location.origin}${vq}`;
   }
 
+  // LOCAL (jarvis-deploy): resolve the channel's CURRENT live stream so cams
+  // never show a stale "recording not available". Falls back to the pinned id.
+  private liveIdCache = new Map<string, { videoId: string; at: number }>();
+
+  private async resolveLiveVideoId(feed: WebcamFeed): Promise<string> {
+    const cached = this.liveIdCache.get(feed.channelHandle);
+    if (cached && Date.now() - cached.at < 5 * 60 * 1000) return cached.videoId;
+    try {
+      const res = await fetch(toApiUrl(`/api/youtube/live?channel=${encodeURIComponent(feed.channelHandle)}`), { signal: AbortSignal.timeout(8000) });
+      if (res.ok) {
+        const data = await res.json() as { videoId?: string | null };
+        if (data.videoId) {
+          this.liveIdCache.set(feed.channelHandle, { videoId: data.videoId, at: Date.now() });
+          return data.videoId;
+        }
+      }
+    } catch { /* fall back to the pinned id */ }
+    return feed.fallbackVideoId;
+  }
+
   private createIframe(feed: WebcamFeed): HTMLIFrameElement {
     const iframe = document.createElement('iframe');
     iframe.className = 'webcam-iframe';
     iframe.src = this.buildEmbedUrl(feed.fallbackVideoId);
+    // Upgrade to the current live stream once resolved (keeps the panel live
+    // without a maintenance script — the pinned id is only the cold-start).
+    void this.resolveLiveVideoId(feed).then((liveId) => {
+      if (liveId && liveId !== feed.fallbackVideoId && iframe.isConnected) {
+        iframe.src = this.buildEmbedUrl(liveId);
+      }
+    });
     iframe.title = `${feed.city} live webcam`;
     iframe.allow = 'autoplay; encrypted-media; picture-in-picture; storage-access';
     iframe.referrerPolicy = 'strict-origin-when-cross-origin';

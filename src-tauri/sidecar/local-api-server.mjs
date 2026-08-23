@@ -214,7 +214,14 @@ globalThis.fetch = async function ipv4Fetch(input, init) {
   const safety = allowPrivateNetwork
     ? { safe: true, resolvedAddresses: [url.hostname] }
     : await assertSafeSidecarFetchUrl(url);
-  if (url.hostname.includes('finance.yahoo.com')) await sidecarYahooGate();
+  if (url.hostname.includes('finance.yahoo.com')) {
+    // LOCAL (jarvis-deploy): Yahoo Finance works over the platform fetch but
+    // fails through the IPv4-pinned reimplementation below (which exists for
+    // broken-IPv6 hosts like EIA/NASA FIRMS — Yahoo is not one). Throttle, then
+    // use the original fetch so on-demand stock analysis actually gets candles.
+    await sidecarYahooGate();
+    return _originalFetch(input, init);
+  }
   await acquireUpstreamSlot();
   try {
     const mod = url.protocol === 'https:' ? https : http;
@@ -1607,13 +1614,39 @@ async function dispatch(requestUrl, req, routes, context) {
     }
   }
 
-  // YouTube live detection — requires residential proxy (Railway relay).
-  // Direct fetch from sidecar fails (YouTube blocks datacenter IPs).
-  // Always proxy to cloud, bypassing the cloudFallback flag.
+  // YouTube live detection. LOCAL (jarvis-deploy): the original stub assumed a
+  // datacenter IP that YouTube blocks and always 503'd, so every webcam fell
+  // back to a stale hardcoded videoId ("recording not available"). This box is
+  // on a residential connection, so it resolves the channel's CURRENT live
+  // stream directly (verified). The panel calls this per render, so cams stay
+  // live without a separate updater. Cloud relay stays as a fallback.
   if (requestUrl.pathname === '/api/youtube/live') {
-    const cloudResponse = await tryCloudFallback(requestUrl, req, context, 'youtube-live needs relay');
+    const channel = requestUrl.searchParams.get('channel');
+    if (!channel) return json({ error: 'Missing channel parameter' }, 400);
+    try {
+      const handle = channel.startsWith('@') ? channel : `@${channel}`;
+      const ytRes = await fetchWithTimeout(`https://www.youtube.com/${handle}/live`, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+        redirect: 'follow',
+      }, 12000);
+      if (ytRes.ok) {
+        const html = await ytRes.text();
+        let videoId = null;
+        const idx = html.indexOf('"videoDetails"');
+        if (idx !== -1) {
+          const block = html.substring(idx, idx + 5000);
+          const vid = block.match(/"videoId":"([a-zA-Z0-9_-]{11})"/);
+          const live = block.match(/"isLive"\s*:\s*true/);
+          if (vid && live) videoId = vid[1];
+        }
+        return json({ videoId, isLive: videoId !== null, channel }, 200, { 'Cache-Control': 'public, max-age=300' });
+      }
+    } catch (e) {
+      context.logger.warn(`[youtube-live] direct resolve failed for ${channel}: ${e.message}`);
+    }
+    const cloudResponse = await tryCloudFallback(requestUrl, req, context, 'youtube-live direct failed');
     if (cloudResponse) return cloudResponse;
-    return json({ error: 'YouTube live detection unavailable' }, 503);
+    return json({ videoId: null, isLive: false, channel }, 200);
   }
 
   // RSS proxy — fetch public feeds with SSRF protection
