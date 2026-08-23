@@ -1,6 +1,6 @@
 import { getHydratedData } from '@/services/bootstrap';
 import { toApiUrl } from '@/services/runtime';
-import { INSIGHTS_MAX_AGE_MS, isAcceptedInsightsSnapshot } from '../../shared/insights-snapshot.js';
+import { INSIGHTS_MAX_AGE_MS, isAcceptedInsightsSnapshot, insightsSnapshotRejection } from '../../shared/insights-snapshot.js';
 
 export interface ServerInsightStory {
   primaryTitle: string;
@@ -73,8 +73,26 @@ function isFresh(data: ServerInsights): boolean {
   return isAcceptedInsightsSnapshot(data);
 }
 
+const SELF_HOSTED = (import.meta as unknown as { env?: Record<string, string | undefined> }).env?.VITE_WM_SELF_HOSTED_UNLOCK === '1';
+
 function validateInsights(raw: unknown): ServerInsights | null {
-  return isAcceptedInsightsSnapshot(raw) ? raw as ServerInsights : null;
+  if (isAcceptedInsightsSnapshot(raw)) return raw as ServerInsights;
+  // LOCAL (jarvis-deploy): a private-instance seed sometimes writes a real
+  // worldBrief + topStories but omits/ages `generatedAt`. Upstream throws the
+  // whole snapshot away → the panel shows "unavailable" over a real brief.
+  // Accept it by stamping a fresh generatedAt when the only fault is the
+  // timestamp and a brief actually exists.
+  if (SELF_HOSTED && typeof raw === 'object' && raw !== null) {
+    const r = raw as Record<string, unknown>;
+    const reason = insightsSnapshotRejection(raw);
+    const hasBrief = typeof r.worldBrief === 'string' && r.worldBrief.length > 0;
+    const hasStories = Array.isArray(r.topStories) && r.topStories.length > 0;
+    if (hasBrief && hasStories && (reason === 'missing-generated-at' || reason === 'stale-snapshot' || reason === 'future-generated-at')) {
+      const coerced = { ...r, generatedAt: new Date().toISOString() };
+      if (isAcceptedInsightsSnapshot(coerced)) return coerced as unknown as ServerInsights;
+    }
+  }
+  return null;
 }
 
 export function getServerInsights(): ServerInsights | null {
