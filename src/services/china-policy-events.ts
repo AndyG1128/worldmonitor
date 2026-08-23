@@ -332,7 +332,7 @@ export function createChinaPolicyService(options: ChinaPolicyServiceOptions = {}
     const response = await fetchImpl(
       toApiUrl(`/api/bootstrap?keys=${CHINA_POLICY_EVENTS_BOOTSTRAP_KEY}&public=1`),
       {
-        credentials: 'omit',
+        credentials: (import.meta as unknown as { env?: Record<string, string | undefined> }).env?.VITE_WM_SELF_HOSTED_UNLOCK === '1' ? 'include' : 'omit',
         signal: AbortSignal.timeout(10_000),
       },
     );

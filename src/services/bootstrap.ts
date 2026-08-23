@@ -1,5 +1,10 @@
 import { getPersistentCache, setPersistentCache } from '@/services/persistent-cache';
 import { isDesktopRuntime, toApiUrl } from '@/services/runtime';
+
+// LOCAL (jarvis-deploy): behind the Jarvis edge gate every request must carry
+// the session cookie; 'omit' (a vendor-CDN optimization) gets a 401 here.
+const SELF_HOSTED_BOOTSTRAP_CREDS: RequestCredentials | undefined =
+  (import.meta as unknown as { env?: Record<string, string | undefined> }).env?.VITE_WM_SELF_HOSTED_UNLOCK === '1' ? 'include' : undefined;
 import {
   buildBootstrapTransferRumSample,
   readBootstrapEncodedBodySize,
@@ -178,7 +183,7 @@ export async function ensureHydrated(key: string): Promise<unknown | undefined> 
     try {
       const resp = await fetch(
         toApiUrl(`/api/bootstrap?keys=${encodeURIComponent(key)}&public=1`),
-        { credentials: 'omit', signal: AbortSignal.timeout(10_000) },
+        { credentials: SELF_HOSTED_BOOTSTRAP_CREDS ?? 'omit', signal: AbortSignal.timeout(10_000) },
       );
       if (!resp.ok) return undefined;
       const payload = (await resp.json()) as { data?: Record<string, unknown> };
@@ -324,7 +329,7 @@ async function fetchTier(
     // public=1 gives the shared seed bundle a cache key distinct from the legacy
     // credentialed tier URL. credentials:'omit' also avoids sending cookies to
     // a route whose contract is explicitly public (see #5249).
-    const resp = await fetch(requestUrl, { signal, credentials: 'omit' });
+    const resp = await fetch(requestUrl, { signal, credentials: SELF_HOSTED_BOOTSTRAP_CREDS ?? 'omit' });
     if (!resp.ok) {
       failedOutcome = 'http-error';
     } else {

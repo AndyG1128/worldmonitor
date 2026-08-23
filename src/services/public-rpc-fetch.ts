@@ -21,6 +21,6 @@ export const publicRpcFetch: typeof fetch = async (input, init) => {
     ...init,
     method: 'GET',
     headers,
-    credentials: 'omit',
+    credentials: (import.meta as unknown as { env?: Record<string, string | undefined> }).env?.VITE_WM_SELF_HOSTED_UNLOCK === '1' ? 'include' : 'omit',
   });
 };

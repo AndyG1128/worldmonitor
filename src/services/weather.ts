@@ -73,7 +73,7 @@ export async function fetchWeatherAlerts(): Promise<WeatherAlert[]> {
     // import would pull the whole 127-entry registry in for one 13-char string.
     const resp = await fetch(
       toApiUrl('/api/bootstrap?keys=weatherAlerts&public=1'),
-      { credentials: 'omit', signal: AbortSignal.timeout(8000) },
+      { credentials: (import.meta as unknown as { env?: Record<string, string | undefined> }).env?.VITE_WM_SELF_HOSTED_UNLOCK === '1' ? 'include' : 'omit', signal: AbortSignal.timeout(8000) },
     );
     if (!resp.ok) throw new Error(`Bootstrap fetch failed: ${resp.status}`);
     const json = await resp.json() as { data?: { weatherAlerts?: { alerts?: BootstrapAlert[] } } };

@@ -36,7 +36,7 @@ export async function fetchCorrelationRuntimeMode(
     const response = await fetchImpl(toApiUrl(CORRELATION_RUNTIME_MODE_ENDPOINT), {
       method: 'GET',
       cache: 'no-store',
-      credentials: 'omit',
+      credentials: (import.meta as unknown as { env?: Record<string, string | undefined> }).env?.VITE_WM_SELF_HOSTED_UNLOCK === '1' ? 'include' : 'omit',
       headers: { Accept: 'application/json' },
       signal: AbortSignal.timeout(CONTROL_PLANE_TIMEOUT_MS),
     });
