@@ -3807,9 +3807,6 @@
       "references": [
         {
           "path": "scripts/_yahoo-sector-valuations.cjs"
-        },
-        {
-          "path": "server/worldmonitor/market/v1/analyze-stock.ts"
         }
       ]
     },
