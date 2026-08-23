@@ -632,7 +632,15 @@ async function llmFetch(
         buf = buf.slice(nl + 1);
         if (!line) continue;
         try {
-          const j = JSON.parse(line) as { message?: { content?: string }; done?: boolean };
+          const j = JSON.parse(line) as { message?: { content?: string }; done?: boolean; error?: string };
+          if (j.error) {
+            // Ollama reports mid-stream failures (e.g. context overflow) as an
+            // NDJSON line with `error`, HTTP 200. Surface it instead of ending
+            // the stream silently with zero content.
+            console.warn(`[llm-stream:ollama-native] ${j.error}`);
+            controller.error(new Error(`ollama: ${j.error}`));
+            return;
+          }
           const delta = j.message?.content ?? '';
           if (delta) {
             controller.enqueue(enc.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: delta } }] })}\n\n`));

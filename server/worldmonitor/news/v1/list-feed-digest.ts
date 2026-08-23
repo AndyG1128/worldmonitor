@@ -61,7 +61,9 @@ const FEED_TIMEOUT_MS = 8_000;
 // Vercel Edge functions have a 25s initial-response ceiling. The digest
 // must fail closed to the warmed in-isolate fallback before the platform does.
 const VERCEL_INITIAL_RESPONSE_LIMIT_MS = 25_000;
-const DIGEST_RESPONSE_TIMEOUT_MS = 14_000;
+// LOCAL (jarvis-deploy): configurable alongside DIGEST_OVERALL_DEADLINE_MS —
+// this response cap truncated the build at 14s regardless of the fetch budget.
+const DIGEST_RESPONSE_TIMEOUT_MS = Number(process.env.DIGEST_RESPONSE_TIMEOUT_MS) || 14_000;
 const POST_FETCH_HEADROOM_MS = 15_000;
 const RESPONSE_GUARD_BAND_MS = 3_000;
 // LOCAL (jarvis-deploy): the Vercel-derived 10s total budget drops most

@@ -445,7 +445,10 @@ export class DataLoaderManager implements AppModule {
   private xIntelHasLiveData = false;
 
   private digestBreaker = { state: 'closed' as 'closed' | 'open' | 'half-open', failures: 0, cooldownUntil: 0 };
-  private readonly digestRequestTimeoutMs = 8000;
+  // LOCAL (jarvis-deploy): a self-hosted digest build can take ~60–90s before
+  // it is cached; 8s made every first load abort. The timer warms the cache,
+  // this is the safety margin for a cold one.
+  private readonly digestRequestTimeoutMs = import.meta.env.VITE_WM_SELF_HOSTED_UNLOCK === '1' ? 120_000 : 8000;
   private readonly digestFirstPaintGraceMs = 1500;
   private readonly digestBreakerCooldownMs = 5 * 60 * 1000;
   private readonly persistedDigestMaxAgeMs = 6 * 60 * 60 * 1000;
