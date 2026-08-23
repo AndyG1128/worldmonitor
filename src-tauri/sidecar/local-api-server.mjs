@@ -26,6 +26,35 @@ const _originalFetch = globalThis.fetch;
 const ALLOW_PRIVATE_NETWORK_FETCH = Symbol('worldmonitor.allowPrivateNetworkFetch');
 const sidecarAllowedPrivateFetchOrigins = new Set();
 
+// LOCAL (jarvis-deploy): a fresh-connection GET/POST via node:https for hosts
+// that rate-limit a pooled/stale socket. Returns a fetch-compatible Response.
+async function freshHttpsFetch(url, init = {}) {
+  const https = await import('node:https');
+  const agent = new https.Agent({ keepAlive: false, maxSockets: 1 });
+  const method = (init.method || 'GET').toUpperCase();
+  const headers = { 'User-Agent': 'Mozilla/5.0', ...(init.headers || {}) };
+  return await new Promise((resolve, reject) => {
+    const req = https.request(url, { method, headers, agent, timeout: 20000 }, (res) => {
+      const chunks = [];
+      res.on('data', (c) => chunks.push(c));
+      res.on('end', () => {
+        const body = Buffer.concat(chunks);
+        resolve({
+          ok: res.statusCode >= 200 && res.statusCode < 300,
+          status: res.statusCode,
+          headers: new Map(Object.entries(res.headers)),
+          text: async () => body.toString('utf8'),
+          json: async () => JSON.parse(body.toString('utf8')),
+        });
+      });
+    });
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(new Error('timeout')); });
+    if (init.body) req.write(typeof init.body === 'string' ? init.body : Buffer.from(init.body));
+    req.end();
+  });
+}
+
 function normalizeRequestBody(body) {
   if (body == null) return null;
   if (typeof body === 'string' || Buffer.isBuffer(body) || body instanceof Uint8Array) return body;
@@ -231,19 +260,13 @@ globalThis.fetch = async function ipv4Fetch(input, init) {
     // broken-IPv6 hosts like EIA/NASA FIRMS — Yahoo is not one). Throttle, then
     // use the original fetch so on-demand stock analysis actually gets candles.
     if (url.hostname.endsWith('yahoo.com')) await sidecarYahooGate();
-    // Force a genuinely fresh connection. undici (Node's fetch) pools per-origin
-    // and IGNORES `Connection: close`, so the sidecar's throttled Yahoo socket
-    // kept 429ing while fresh processes got 200. A short-lived Agent gives each
-    // request its own connection pool (2026-08-23).
-    try {
-      const { Agent } = await import('undici');
-      const dispatcher = new Agent({ connections: 1, pipelining: 0, keepAliveTimeout: 1, keepAliveMaxTimeout: 1 });
-      const resp = await _originalFetch(input, { ...init, dispatcher });
-      dispatcher.close().catch(() => {});
-      return resp;
-    } catch {
-      return _originalFetch(input, init);
-    }
+    // Force a genuinely fresh connection + fresh DNS. Node's fetch (undici)
+    // pools per-origin and the pooled socket to a throttled edge IP kept 429ing
+    // while fresh processes got 200; `undici` is not importable in this bundle.
+    // node:https with a keepAlive:false Agent gives each call its own connection,
+    // so keyed data APIs (Yahoo/AlphaVantage/Finnhub) stop being rate-limited by
+    // a stale socket (2026-08-23).
+    return freshHttpsFetch(url, init);
   }
   await acquireUpstreamSlot();
   try {
