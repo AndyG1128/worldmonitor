@@ -152,7 +152,7 @@ const FULL_MAP_LAYERS: MapLayers = {
   ais: false,
   nuclear: true,
   irradiators: false,
-  radiationWatch: false,
+  radiationWatch: true, // LOCAL: data seeds fine, layer on by default
   sanctions: true,
   weather: true,
   // Opt-in — see DEFAULT_MAP_LAYERS in src/config/variants/full.ts. Its four
@@ -222,7 +222,7 @@ const FULL_MOBILE_MAP_LAYERS: MapLayers = {
   ais: false,
   nuclear: false,
   irradiators: false,
-  radiationWatch: false,
+  radiationWatch: true, // LOCAL: data seeds fine, layer on by default
   sanctions: true,
   weather: true,
   canadaRoads: false,

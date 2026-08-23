@@ -968,6 +968,32 @@ async function getYahooSession(force = false): Promise<{ cookie: string; crumb: 
   return null;
 }
 
+// LOCAL (jarvis-deploy): Yahoo rate-limits historical candles under bursts
+// (a watchlist). Alpha Vantage (keyed, reliable, daily data) is the fallback so
+// analysis works without a paid Yahoo. Finnhub free has no candles.
+async function fetchAlphaVantageHistory(symbol: string): Promise<{ candles: Candle[]; currency: string } | null> {
+  const key = process.env.ALPHA_VANTAGE_API_KEY;
+  if (!key) return null;
+  try {
+    const url = `https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=${encodeURIComponent(symbol)}&apikey=${key}&outputsize=compact`;
+    const r = await fetch(url, { headers: { 'User-Agent': CHROME_UA }, signal: AbortSignal.timeout(15000) });
+    if (!r.ok) return null;
+    const j = await r.json().catch(() => null) as { 'Time Series (Daily)'?: Record<string, Record<string, string>>; Note?: string; Information?: string } | null;
+    const series = j?.['Time Series (Daily)'];
+    if (!series) return null; // Note/Information => rate-limited; caller keeps Yahoo's verdict
+    const candles: Candle[] = Object.entries(series)
+      .map(([date, o]) => ({
+        timestamp: Date.parse(date + 'T00:00:00Z'),
+        open: Number(o['1. open']), high: Number(o['2. high']),
+        low: Number(o['3. low']), close: Number(o['4. close']),
+        volume: Number(o['5. volume']),
+      }))
+      .filter((c) => Number.isFinite(c.timestamp) && Number.isFinite(c.close))
+      .sort((a, b) => a.timestamp - b.timestamp);
+    return candles.length >= 30 ? { candles, currency: 'USD' } : null;
+  } catch { return null; }
+}
+
 export async function fetchYahooHistoryOutcome(symbol: string): Promise<YahooHistoryOutcome> {
   await yahooGate();
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=6mo&interval=1d&includePrePost=true&events=div,splits`;
@@ -985,7 +1011,11 @@ export async function fetchYahooHistoryOutcome(symbol: string): Promise<YahooHis
     if (response.status !== 429 && response.status !== 401) break;
     await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
   }
-  if (!response) return { status: 'unavailable' };
+  if (!response || response.status === 429 || response.status === 401) {
+    const av = await fetchAlphaVantageHistory(symbol);
+    if (av) return { status: 'success', history: av };
+    if (!response) return { status: 'unavailable' };
+  }
   const data = await response.json().catch(() => null) as YahooChartResponse | null;
   if (isDefinitiveYahooInvalidSymbol(response.status, data)) return { status: 'invalid-symbol' };
   if (!response.ok || !data) return { status: 'unavailable' };

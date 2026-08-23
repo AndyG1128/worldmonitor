@@ -12,8 +12,8 @@ export const CLIMATE_ZONE_NORMALS_KEY = 'climate:zone-normals:v1';
 const NORMALS_TTL = 95 * 24 * 60 * 60; // 95 days = >3x a 31-day monthly interval
 const NORMALS_START = '1991-01-01';
 const NORMALS_END = '2020-12-31';
-const NORMALS_BATCH_SIZE = 2;
-const NORMALS_BATCH_DELAY_MS = 3_000;
+const NORMALS_BATCH_SIZE = Number(process.env.CLIMATE_NORMALS_BATCH_SIZE) || 2;
+const NORMALS_BATCH_DELAY_MS = Number(process.env.CLIMATE_NORMALS_BATCH_DELAY_MS) || 8_000;
 
 function round(value, decimals = 2) {
   const scale = 10 ** decimals;
@@ -151,6 +151,10 @@ const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv
 if (isMain) {
   runSeed('climate', 'zone-normals', CLIMATE_ZONE_NORMALS_KEY, fetchClimateZoneNormals, {
     validateFn: validate,
+    // LOCAL (jarvis-deploy): Open-Meteo's archive API 429s under bursts; the
+    // gentler pacing above needs more than the default 240s to build the 25-zone
+    // baseline (it's a one-time/monthly job, so a long deadline is fine).
+    fetchPhaseTimeoutMs: Number(process.env.CLIMATE_NORMALS_DEADLINE_MS) || 900_000,
     ttlSeconds: NORMALS_TTL,
     sourceVersion: 'open-meteo-wmo-1991-2020-v1',
     declareRecords,
