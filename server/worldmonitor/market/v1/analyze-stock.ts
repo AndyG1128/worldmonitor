@@ -953,15 +953,18 @@ async function getYahooSession(force = false): Promise<{ cookie: string; crumb: 
   if (!force && _yahooSession && Date.now() - _yahooSession.at < 60 * 60 * 1000) return _yahooSession;
   try {
     const c = await fetch('https://fc.yahoo.com/', { headers: { 'User-Agent': CHROME_UA }, redirect: 'manual', signal: AbortSignal.timeout(8000) }).catch(() => null);
-    const setCookie = c?.headers?.get?.('set-cookie') || '';
-    const cookie = setCookie ? setCookie.split(';')[0] : '';
+    // Node needs getSetCookie(); get('set-cookie') returns the folded value.
+    const setCookies: string[] = c?.headers && typeof (c.headers as { getSetCookie?: () => string[] }).getSetCookie === 'function'
+      ? (c.headers as { getSetCookie: () => string[] }).getSetCookie()
+      : (c?.headers?.get?.('set-cookie') ? [c.headers.get('set-cookie') as string] : []);
+    const cookie = setCookies.map((sc) => sc.split(';')[0]).filter(Boolean).join('; ');
     const cr = await fetch('https://query1.finance.yahoo.com/v1/test/getcrumb', { headers: { 'User-Agent': CHROME_UA, ...(cookie ? { Cookie: cookie } : {}) }, signal: AbortSignal.timeout(8000) });
     const crumb = (await cr.text()).trim();
-    if (crumb && crumb.length < 40 && cr.status === 200) {
+    if (crumb && crumb.length > 0 && crumb.length < 40 && !crumb.includes('<') && cr.status === 200) {
       _yahooSession = { cookie, crumb, at: Date.now() };
       return _yahooSession;
     }
-  } catch { /* fall through — anonymous fetch still works most of the time */ }
+  } catch { /* anonymous fetch still works when the IP is not throttled */ }
   return null;
 }
 
