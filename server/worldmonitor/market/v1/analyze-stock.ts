@@ -952,13 +952,13 @@ let _yahooSession: { cookie: string; crumb: string; at: number } | null = null;
 async function getYahooSession(force = false): Promise<{ cookie: string; crumb: string } | null> {
   if (!force && _yahooSession && Date.now() - _yahooSession.at < 60 * 60 * 1000) return _yahooSession;
   try {
-    const c = await fetch('https://fc.yahoo.com/', { headers: { 'User-Agent': CHROME_UA }, redirect: 'manual', signal: AbortSignal.timeout(8000) }).catch(() => null);
+    const c = null; // fc.yahoo.com cookie via node:https below
     // Node needs getSetCookie(); get('set-cookie') returns the folded value.
     const setCookies: string[] = c?.headers && typeof (c.headers as { getSetCookie?: () => string[] }).getSetCookie === 'function'
       ? (c.headers as { getSetCookie: () => string[] }).getSetCookie()
       : (c?.headers?.get?.('set-cookie') ? [c.headers.get('set-cookie') as string] : []);
     const cookie = setCookies.map((sc) => sc.split(';')[0]).filter(Boolean).join('; ');
-    const cr = await fetch('https://query1.finance.yahoo.com/v1/test/getcrumb', { headers: { 'User-Agent': CHROME_UA, ...(cookie ? { Cookie: cookie } : {}) }, signal: AbortSignal.timeout(8000) });
+    const cr = await freshGet('https://query1.finance.yahoo.com/v1/test/getcrumb', cookie ? { Cookie: cookie } : {});
     const crumb = (await cr.text()).trim();
     if (crumb && crumb.length > 0 && crumb.length < 40 && !crumb.includes('<') && cr.status === 200) {
       _yahooSession = { cookie, crumb, at: Date.now() };
@@ -966,6 +966,28 @@ async function getYahooSession(force = false): Promise<{ cookie: string; crumb: 
     }
   } catch { /* anonymous fetch still works when the IP is not throttled */ }
   return null;
+}
+
+// LOCAL (jarvis-deploy): the sidecar's global fetch keeps a pooled connection to
+// Yahoo that stays 429'd; a fresh node:https connection gets 200 (verified). Use
+// it directly for the rate-limited data hosts, bypassing the fetch pool.
+async function freshGet(rawUrl: string, headers: Record<string, string> = {}): Promise<{ ok: boolean; status: number; text: () => Promise<string>; json: () => Promise<unknown> }> {
+  const https = await import('node:https');
+  const agent = new https.Agent({ keepAlive: false, maxSockets: 1 });
+  return await new Promise((resolve, reject) => {
+    const req = https.request(rawUrl, { method: 'GET', headers: { 'User-Agent': CHROME_UA, ...headers }, agent, timeout: 20000 }, (res) => {
+      const chunks: Buffer[] = [];
+      res.on('data', (c: Buffer) => chunks.push(c));
+      res.on('end', () => {
+        const body = Buffer.concat(chunks).toString('utf8');
+        const sc = res.statusCode || 0;
+        resolve({ ok: sc >= 200 && sc < 300, status: sc, text: async () => body, json: async () => JSON.parse(body) });
+      });
+    });
+    req.on('error', reject);
+    req.on('timeout', () => req.destroy(new Error('timeout')));
+    req.end();
+  });
 }
 
 // LOCAL (jarvis-deploy): Yahoo rate-limits historical candles under bursts
@@ -976,7 +998,7 @@ async function fetchAlphaVantageHistory(symbol: string): Promise<{ candles: Cand
   if (!key) return null;
   try {
     const url = `https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=${encodeURIComponent(symbol)}&apikey=${key}&outputsize=compact`;
-    const r = await fetch(url, { headers: { 'User-Agent': CHROME_UA }, signal: AbortSignal.timeout(15000) });
+    const r = await freshGet(url);
     if (!r.ok) return null;
     const j = await r.json().catch(() => null) as { 'Time Series (Daily)'?: Record<string, Record<string, string>>; Note?: string; Information?: string } | null;
     const series = j?.['Time Series (Daily)'];
@@ -1004,10 +1026,7 @@ export async function fetchYahooHistoryOutcome(symbol: string): Promise<YahooHis
     const session = await getYahooSession(attempt > 0);
     const sep = url.includes('?') ? '&' : '?';
     const reqUrl = session?.crumb ? `${url}${sep}crumb=${encodeURIComponent(session.crumb)}` : url;
-    response = await fetch(reqUrl, {
-      headers: { 'User-Agent': CHROME_UA, ...(session?.cookie ? { Cookie: session.cookie } : {}) },
-      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-    });
+    response = await freshGet(reqUrl, session?.cookie ? { Cookie: session.cookie } : {}) as unknown as Response;
     if (response.status !== 429 && response.status !== 401) break;
     await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
   }
