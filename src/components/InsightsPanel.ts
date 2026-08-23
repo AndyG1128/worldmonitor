@@ -341,7 +341,7 @@ export class InsightsPanel extends Panel {
     }
 
     // Build summarize options from AI flow settings (web) or defaults (desktop)
-    const aiFlow = isDesktopRuntime() ? { cloudLlm: true, browserModel: true } : getAiFlowSettings();
+    const aiFlow = (isDesktopRuntime() || (import.meta as unknown as { env?: Record<string, string | undefined> }).env?.VITE_WM_SELF_HOSTED_UNLOCK === '1') ? { cloudLlm: true, browserModel: true } : getAiFlowSettings();
     const summarizeOpts: SummarizeOptions = {
       skipCloudProviders: !aiFlow.cloudLlm,
       skipBrowserFallback: !aiFlow.browserModel,

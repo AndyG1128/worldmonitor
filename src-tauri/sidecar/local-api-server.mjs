@@ -231,10 +231,19 @@ globalThis.fetch = async function ipv4Fetch(input, init) {
     // broken-IPv6 hosts like EIA/NASA FIRMS — Yahoo is not one). Throttle, then
     // use the original fetch so on-demand stock analysis actually gets candles.
     if (url.hostname.endsWith('yahoo.com')) await sidecarYahooGate();
-    // Force a fresh connection: a keep-alive socket to a throttled edge IP keeps
-    // returning 429 across the long-lived sidecar process (issue seen 2026-08-22).
-    const freshInit = { ...init, headers: { ...(init?.headers || {}), Connection: 'close' }, keepalive: false };
-    return _originalFetch(input, freshInit);
+    // Force a genuinely fresh connection. undici (Node's fetch) pools per-origin
+    // and IGNORES `Connection: close`, so the sidecar's throttled Yahoo socket
+    // kept 429ing while fresh processes got 200. A short-lived Agent gives each
+    // request its own connection pool (2026-08-23).
+    try {
+      const { Agent } = await import('undici');
+      const dispatcher = new Agent({ connections: 1, pipelining: 0, keepAliveTimeout: 1, keepAliveMaxTimeout: 1 });
+      const resp = await _originalFetch(input, { ...init, dispatcher });
+      dispatcher.close().catch(() => {});
+      return resp;
+    } catch {
+      return _originalFetch(input, init);
+    }
   }
   await acquireUpstreamSlot();
   try {

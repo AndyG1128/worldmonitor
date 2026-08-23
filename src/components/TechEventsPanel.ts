@@ -201,7 +201,7 @@ export class TechEventsPanel extends Panel {
           event.location
             ? h('span', { className: 'event-location' }, event.location)
             : false,
-          isDesktopRuntime() ? h('button', {
+          (isDesktopRuntime() || (import.meta as unknown as { env?: Record<string, string | undefined> }).env?.VITE_WM_SELF_HOSTED_UNLOCK === '1') ? h('button', {
             className: 'event-deduce-link',
             title: 'Deduce Situation with AI',
             style: 'background: none; border: none; cursor: pointer; opacity: 0.7; font-size: 1.1em; transition: opacity 0.2s; margin-left: auto; padding-right: 4px;',

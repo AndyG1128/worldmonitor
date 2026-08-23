@@ -280,6 +280,10 @@ export function hasFeature(flag: keyof EntitlementState['features']): boolean {
  * Check whether the user's tier meets or exceeds the given minimum.
  */
 export function hasTier(minTier: number): boolean {
+  // LOCAL (jarvis-deploy): the private instance is fully entitled — every tier
+  // check passes, so Summarize buttons, drill-ins, and watchlist sync are not
+  // gated behind a vendor plan.
+  if ((import.meta as unknown as { env?: Record<string, string | undefined> }).env?.VITE_WM_SELF_HOSTED_UNLOCK === '1') return true;
   if (currentState === null) return false;
   return currentState.features.tier >= minTier;
 }
