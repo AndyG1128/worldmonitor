@@ -229,8 +229,9 @@ async function fetchPayoutRatio(symbol: string): Promise<number | undefined> {
   try {
     await yahooGate();
     const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=summaryDetail`;
-    const response = await fetch(url, {
-      headers: { 'User-Agent': CHROME_UA },
+    const session = await getYahooSession();
+    const response = await fetch(session?.crumb ? `${url}${url.includes('?') ? '&' : '?'}crumb=${encodeURIComponent(session.crumb)}` : url, {
+      headers: { 'User-Agent': CHROME_UA, ...(session?.cookie ? { Cookie: session.cookie } : {}) },
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
     if (!response.ok) return undefined;
@@ -944,18 +945,41 @@ function isDefinitiveYahooInvalidSymbol(status: number, data: YahooChartResponse
     || description.includes('symbol may be delisted');
 }
 
+// LOCAL (jarvis-deploy): Yahoo throttles anonymous chart/quoteSummary calls
+// (429/401) under bursts like a full watchlist. A cookie+crumb session lifts
+// the limit substantially. Cached module-wide, refreshed hourly / on failure.
+let _yahooSession: { cookie: string; crumb: string; at: number } | null = null;
+async function getYahooSession(force = false): Promise<{ cookie: string; crumb: string } | null> {
+  if (!force && _yahooSession && Date.now() - _yahooSession.at < 60 * 60 * 1000) return _yahooSession;
+  try {
+    const c = await fetch('https://fc.yahoo.com/', { headers: { 'User-Agent': CHROME_UA }, redirect: 'manual', signal: AbortSignal.timeout(8000) }).catch(() => null);
+    const setCookie = c?.headers?.get?.('set-cookie') || '';
+    const cookie = setCookie ? setCookie.split(';')[0] : '';
+    const cr = await fetch('https://query1.finance.yahoo.com/v1/test/getcrumb', { headers: { 'User-Agent': CHROME_UA, ...(cookie ? { Cookie: cookie } : {}) }, signal: AbortSignal.timeout(8000) });
+    const crumb = (await cr.text()).trim();
+    if (crumb && crumb.length < 40 && cr.status === 200) {
+      _yahooSession = { cookie, crumb, at: Date.now() };
+      return _yahooSession;
+    }
+  } catch { /* fall through — anonymous fetch still works most of the time */ }
+  return null;
+}
+
 export async function fetchYahooHistoryOutcome(symbol: string): Promise<YahooHistoryOutcome> {
   await yahooGate();
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=6mo&interval=1d&includePrePost=true&events=div,splits`;
-  // LOCAL (jarvis-deploy): Yahoo 429s under bursts (a full watchlist). Retry a
-  // couple of times with backoff so on-demand analysis is reliable.
+  // LOCAL (jarvis-deploy): use a cookie+crumb session and retry on 429/401 so a
+  // full watchlist doesn't get throttled to available:false.
   let response: Response | null = null;
   for (let attempt = 0; attempt < 3; attempt++) {
-    response = await fetch(url, {
-      headers: { 'User-Agent': CHROME_UA },
+    const session = await getYahooSession(attempt > 0);
+    const sep = url.includes('?') ? '&' : '?';
+    const reqUrl = session?.crumb ? `${url}${sep}crumb=${encodeURIComponent(session.crumb)}` : url;
+    response = await fetch(reqUrl, {
+      headers: { 'User-Agent': CHROME_UA, ...(session?.cookie ? { Cookie: session.cookie } : {}) },
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
-    if (response.status !== 429) break;
+    if (response.status !== 429 && response.status !== 401) break;
     await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
   }
   if (!response) return { status: 'unavailable' };
