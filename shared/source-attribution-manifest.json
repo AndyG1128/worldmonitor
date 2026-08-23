@@ -10329,6 +10329,9 @@
         },
         {
           "path": "server/worldmonitor/market/v1/_shared.ts"
+        },
+        {
+          "path": "server/worldmonitor/market/v1/analyze-stock.ts"
         }
       ]
     },
