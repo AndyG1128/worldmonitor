@@ -225,13 +225,16 @@ globalThis.fetch = async function ipv4Fetch(input, init) {
   const safety = allowPrivateNetwork
     ? { safe: true, resolvedAddresses: [url.hostname] }
     : await assertSafeSidecarFetchUrl(url);
-  if (url.hostname.includes('finance.yahoo.com')) {
+  if (url.hostname.endsWith('yahoo.com') || url.hostname.endsWith('alphavantage.co') || url.hostname.endsWith('finnhub.io')) {
     // LOCAL (jarvis-deploy): Yahoo Finance works over the platform fetch but
     // fails through the IPv4-pinned reimplementation below (which exists for
     // broken-IPv6 hosts like EIA/NASA FIRMS — Yahoo is not one). Throttle, then
     // use the original fetch so on-demand stock analysis actually gets candles.
-    await sidecarYahooGate();
-    return _originalFetch(input, init);
+    if (url.hostname.endsWith('yahoo.com')) await sidecarYahooGate();
+    // Force a fresh connection: a keep-alive socket to a throttled edge IP keeps
+    // returning 429 across the long-lived sidecar process (issue seen 2026-08-22).
+    const freshInit = { ...init, headers: { ...(init?.headers || {}), Connection: 'close' }, keepalive: false };
+    return _originalFetch(input, freshInit);
   }
   await acquireUpstreamSlot();
   try {
