@@ -189,8 +189,19 @@ function registerSidecarAllowedPrivateFetchOrigins(port, extraOrigins = []) {
   };
 }
 
+// LOCAL (jarvis-deploy): trusted internal service origins (Docker network) —
+// the Telegram/X relay and Ollama. Without this the sidecar's SSRF guard blocks
+// its own backend calls (ais-relay resolves to a private Docker IP → 502).
+const SIDECAR_TRUSTED_INTERNAL_ORIGINS = new Set(
+  [process.env.WS_RELAY_URL, process.env.LLM_API_URL, process.env.OLLAMA_API_URL]
+    .filter(Boolean)
+    .map((u) => { try { return new URL(u).origin; } catch { return null; } })
+    .filter(Boolean),
+);
+
 function isAllowedPrivateSidecarFetch(url) {
-  return sidecarAllowedPrivateFetchOrigins.has(url.origin);
+  return sidecarAllowedPrivateFetchOrigins.has(url.origin)
+    || SIDECAR_TRUSTED_INTERNAL_ORIGINS.has(url.origin);
 }
 
 async function assertSafeSidecarFetchUrl(url) {
