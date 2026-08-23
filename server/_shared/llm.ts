@@ -476,19 +476,13 @@ export function callLlmReasoningStream(opts: LlmStreamOptions): ReadableStream<U
 
         let hasContent = false;
         try {
-          const resp = await fetch(creds.apiUrl, {
-            method: 'POST',
-            headers: { ...creds.headers, 'User-Agent': CHROME_UA },
-            body: JSON.stringify({
-              ...creds.extraBody,
-              model: creds.model,
-              messages,
-              temperature,
-              max_tokens: maxTokens,
-              stream: true,
-            }),
-            signal: activeController.signal,
-          });
+          const resp = await llmFetch(creds, {
+            ...creds.extraBody,
+            model: creds.model,
+            messages,
+            temperature,
+            max_tokens: maxTokens,
+          }, { signal: activeController.signal, stream: true });
           // Timeout stays active — it must bound the streaming body read, not just the connection
 
           if (resp.ok) {
