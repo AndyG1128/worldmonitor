@@ -69,7 +69,10 @@ function parseDetectedAt(acqDate, acqTime) {
 }
 
 async function fetchRegionSource(apiKey, regionName, bbox, source) {
-  const url = `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${apiKey}/${source}/${bbox}/1`;
+  // LOCAL (jarvis-deploy): a 1-day window is nearly empty just after 00:00 UTC
+  // (measured: world/1 → 0 rows, world/2 → 123k rows at 00:30 UTC). Configurable.
+  const dayRange = Math.min(10, Math.max(1, Number(process.env.FIRMS_DAY_RANGE) || 1));
+  const url = `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${apiKey}/${source}/${bbox}/${dayRange}`;
   let lastErr;
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
