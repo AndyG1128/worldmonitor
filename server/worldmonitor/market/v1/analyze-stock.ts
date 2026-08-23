@@ -947,10 +947,18 @@ function isDefinitiveYahooInvalidSymbol(status: number, data: YahooChartResponse
 export async function fetchYahooHistoryOutcome(symbol: string): Promise<YahooHistoryOutcome> {
   await yahooGate();
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=6mo&interval=1d&includePrePost=true&events=div,splits`;
-  const response = await fetch(url, {
-    headers: { 'User-Agent': CHROME_UA },
-    signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-  });
+  // LOCAL (jarvis-deploy): Yahoo 429s under bursts (a full watchlist). Retry a
+  // couple of times with backoff so on-demand analysis is reliable.
+  let response: Response | null = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    response = await fetch(url, {
+      headers: { 'User-Agent': CHROME_UA },
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+    });
+    if (response.status !== 429) break;
+    await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
+  }
+  if (!response) return { status: 'unavailable' };
   const data = await response.json().catch(() => null) as YahooChartResponse | null;
   if (isDefinitiveYahooInvalidSymbol(response.status, data)) return { status: 'invalid-symbol' };
   if (!response.ok || !data) return { status: 'unavailable' };
